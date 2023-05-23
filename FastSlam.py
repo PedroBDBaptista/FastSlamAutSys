@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import random
 import matplotlib.pyplot as plt
 import rosbag # Assuming we have rosbag installed
@@ -9,15 +10,30 @@ def read_rosbag_data(filename):
     #These should be the measurements (aruco detections)
     #Return the extracted data as arrays or lists
 
-def motion_model(x,u):
+def motion_model(particle):
     #Implement the motion model to predict next position
     #Probably we don't need controls "u" because we do not have odometry -> assume constant velocity?
-    #Return the new pose (x_next)
-    return x_next
+    matrixA=np.array([[1,0,0],
+                      [0,1,0],
+                      [0,0,1]])
+    arrayB=np.array([linear_vel*dt*math.cos(particle['pose'][2]),
+                     linear_vel*dt*math.sin(particle['pose'][2]),
+                     angular_vel*dt])
+
+    #Define noise???? WHAT IS THE NOISE
+
+    #Update the new position
+    pose_array=np.array[particle['pose']] #Turns the pose of the particle into an array for matrix multiplication
+    new_pose= matrixA @ pose_array + arrayB # + NOISE?????
+    x,y,theta = new_pose
+    particle['pose'] = [x,y,theta]
+    #Return the new particle with the new 'pose'
+    return particle
 
 def measurement_model(z,x):
     #Calculates the expected measurement given the current estimate of the landmark
     #Return the expected measurement to be used in EKF update probably
+    return()
 
     
 def is_landmark_seen(particle, landmark_id):
@@ -32,13 +48,28 @@ def ekf_update_landmark(mu, sigma, z, Q):
     # sigma: Covariance matrix of the landmark estimate
     # z: Measurement of the landmark
     # Q: Measurement noise covariance matrix
+    return()
 
 def resample_particles(particles, weights):
+    return()
     #return the resampled particles
 
 def fastslam_kc(ParticleSet,measurements):
-    return ParticleSet,pose,landmarks #for each t
+    for k in range(num_particles):
+        #Sample new pose -> Motion Model
+        ParticleSet[k]=motion_model(ParticleSet[k])
+        #Loop in the number of observations done in each instant 
+        #(there might be a possibility that the robot does multiple observations at the same instant)
+        for i in range(measurements):
+            landmark_id=measurements[i][0]
+            
+    
+    return ParticleSet, pose,landmarks #for each t
 
+#Some parameters to define, such as timestep, linear_vel and angular_vel
+dt=0.1 #(s)
+linear_vel=0.5 #(m/s)
+angular_vel=0.5 #(rad/s)
 
 #Load data from rosbag
 filename='path_to_rosbag_file'
@@ -67,16 +98,16 @@ for i in range(num_particles):
     y=random.uniform(y_min,y_max)
     theta=random.uniform((theta_min,theta_max))
     new_particle={
-        'pose': [x,y,theta]
+        'pose': [x,y,theta],
         'landmarks': []
     }
     
     #Loop for each landmark
     for j in range(num_landmarks):
         new_landmark={
-            'id': j #Assuming we use the ids in order, i.e, if we use 5 markers, we are using those which have id=0,1,2,3,4
-            'mu': []
-            'sigma': []
+            'id': j, #Assuming we use the ids in order, i.e, if we use 5 markers, we are using those which have id=0,1,2,3,4
+            'mu': [],
+            'sigma': [] 
         }
         new_particle['landmarks'].append(new_landmark)
     
