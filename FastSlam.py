@@ -130,6 +130,16 @@ def update_landmark(particle, landmark_id, z, err):
     particle['landmarks'][index]['sigma']=sigma_new
     return(particle)
 
+def normalize_weights(ParticleSet):
+    #Calculate the sum of the weights
+    total_weight=sum(particle['weight'] for particle in ParticleSet)
+
+    #Normalize the weights
+    for particle in ParticleSet:
+        particle['weight'] = particle['weight']/total_weight
+    
+    return (ParticleSet)
+
 def resample_particles(ParticleSet,num_particles):
     #THE WEIGHTS IN THE PARTICLES SHOULD BE NORMALIZED
     weights=[]
@@ -139,7 +149,30 @@ def resample_particles(ParticleSet,num_particles):
     resampled_indices=np.random.choice(indices,size=num_particles,p=weights)
     new_particles=[]
     new_particles=[ParticleSet[i] for i in resampled_indices]
+
+    #Change the weights to be the base weight:
+    for i in range(num_particles):
+        new_particles[k]['weight'] = base_weight
+
     return (new_particles)
+
+def retrieve_landmark_positions(ParticleSet,weights):
+    num_landmarks=len(ParticleSet[0]['landmarks']) #Every particle has ALWAYS the same number of landmarks
+    landmark_positions=[[] for _ in range(num_landmarks)] #Creates a list of empty lists. Each of these lists correspond to a landmark
+
+    for particle in ParticleSet:
+        landmarks=particle['landmarks']
+        for i,landmark in range(landmarks):
+            landmark_mean=landmark['mean']
+            landmark_positions[i].append(landmark_mean)
+
+    weighted_landmark_positions=[]
+    for landmark in landmark_positions:
+        landmark=np.array(landmark)
+        weighted_mean=np.average(landmark,axis=0,weights=weights)
+        weighted_landmark_positions.append(weighted_mean.tolist())
+
+    return weighted_landmark_positions
 
 def fastslam_kc(ParticleSet,num_particles,measurements):
     for k in range(num_particles):
@@ -159,8 +192,40 @@ def fastslam_kc(ParticleSet,num_particles,measurements):
 
     
     #Normalize the weights
-    
-    return ParticleSet #for each t
+    ParticleSet=normalize_weights(ParticleSet)
+    #Take robot's position and landmark position
+    weights=np.array([particle['weights'] for particle in ParticleSet])
+    poses=np.array([particle['pose'] for particle in ParticleSet])
+    pose_estimate=np.average(poses,axis=0,weights=weights)
+    landmarks_estimate=retrieve_landmark_positions(ParticleSet,weights)
+
+    #Resample particles
+    ParticleSet=resample_particles(ParticleSet,num_particles)
+    return ParticleSet,pose_estimate,landmarks_estimate #for each t
+
+
+def plot_robot_pose_and_landmarks(robot_positions, landmarks_pose):
+
+    #Extract correctly the robot's positions (over all time -> Path)
+    robot_x=[robot_positions[i][0] for i in range(robot_positions)]
+    robot_y=[robot_positions[i][1] for i in range(robot_positions)]
+
+    #Extract correctly the landmark positions(at last iteration -> Final landmark positions)
+    landmark_x=[landmark[0] for landmark in landmarks_pose]
+    landmark_y=[landmark[1] for landmark in landmarks_pose]
+
+    #Plot the robot's position
+    plt.scatter(robot_x,robot_y,color='blue', label='Robot Path')
+
+    #Plot the landmarks positions
+    plt.scatter(landmark_x,landmark_y,color='red',label='Landmarks')
+
+    #Add labels
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.legend()
+    plt.savefig('SLAM.png')
+    plt.clf()
 
 #Some parameters to define, such as timestep, linear_vel and angular_vel
 time=0
@@ -203,18 +268,20 @@ for i in range(num_particles):
     }
     
     #Loop for each landmark
-    for j in range(num_landmarks):
-        new_landmark={
-            'id': [], #Assuming we use the ids in order, i.e, if we use 5 markers, we are using those which have id=0,1,2,3,4
-            'mu': [],
-            'sigma': [] 
-        }
-        new_particle['landmarks'].append(new_landmark)
+    #for j in range(num_landmarks):
+    #    new_landmark={
+    #        'id': [], #Assuming we use the ids in order, i.e, if we use 5 markers, we are using those which have id=0,1,2,3,4
+    #        'mu': [],
+    #        'sigma': [] 
+    #    }
+    #    new_particle['landmarks'].append(new_landmark)
     
     #Add the new_particle to the particle_set variable
     particle_set.append(new_particle)
     
 
+#Create list for all the positions of the robot
+robot_positions=[]
 
 #Iterate over the messages in the bag file
 for topic, msg, t in bag.read_messages():
@@ -229,7 +296,10 @@ for topic, msg, t in bag.read_messages():
             measurements.append([fiducial_id,translation_x,translation_y])
 
 
-    particle_set, robot_pose, landmark_pose = fastslam_kc(particle_set, num_particles, measurements)
+    particle_set, pose_estimate, landmarks_pose = fastslam_kc(particle_set, num_particles, measurements)
+    robot_positions.append(pose_estimate)
+
+plot_robot_pose_and_landmarks(robot_positions,landmarks_pose)
 
 #Something to show the professor because he is an imbecile
 #Create a video of the particle's positions
